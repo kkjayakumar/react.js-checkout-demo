@@ -1,0 +1,54 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - das1
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+         node-version: ${{ matrix.node-version }}
+         cache: 'npm'
+ 
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build React.js application
+        run: npm run build
+
+      - name: Configure SSH key
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Cleanup old builds
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} 'cd /var/www && ls -1 | grep -v 12 | xargs rm -rf'
+
+      - name: Deploy to EC2 instance
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} 'sudo chown -R $USER /var/www && cd /var/www/ && rm -r 12 && git clone ${{ secrets.REPO_URL }}'
+
+      - name: deploy npm  
+        run: |
+           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} 'cd /var/www/12 && chmod -R 777 /var/www/12/ && sudo npm install ci && sudo npm run build -y'
+
+      - name: Restart Nginx
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} 'sudo service nginx restart'
+
+      
